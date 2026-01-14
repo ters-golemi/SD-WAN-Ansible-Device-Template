@@ -1,0 +1,94 @@
+---
+# Playbook 2: List vSmart Controllers
+# This playbook retrieves and displays all vSmart controllers registered in SD-WAN Manager
+
+- name: List vSmart Controllers
+  hosts: sdwan_manager
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    - name: Get all devices from SD-WAN Manager
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/device"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: all_devices
+      no_log: false
+
+    - name: Filter vSmart controllers
+      set_fact:
+        vsmart_devices: "{{ all_devices.json.data | selectattr('device-type', 'equalto', 'vsmart') | list }}"
+
+    - name: Display count of vSmart controllers
+      debug:
+        msg: "Found {{ vsmart_devices | length }} vSmart controller(s)"
+
+    - name: Display vSmart controller details
+      debug:
+        msg:
+          - "============================================"
+          - "vSmart Controller {{ idx + 1 }}:"
+          - "  Hostname: {{ item['host-name'] | default('N/A') }}"
+          - "  Device Model: {{ item['device-model'] | default('N/A') }}"
+          - "  System IP: {{ item['system-ip'] | default('N/A') }}"
+          - "  UUID: {{ item.uuid | default('N/A') }}"
+          - "  Site ID: {{ item['site-id'] | default('N/A') }}"
+          - "  Device Type: {{ item['device-type'] | default('N/A') }}"
+          - "  Version: {{ item.version | default('N/A') }}"
+          - "  Reachability: {{ item.reachability | default('N/A') }}"
+          - "  Status: {{ item.status | default('N/A') }}"
+          - "  Config Status: {{ item['config-status-message'] | default('N/A') }}"
+          - "  Template: {{ item.template | default('Not Attached') }}"
+          - "  Config Operation Mode: {{ item['configOperationMode'] | default('N/A') }}"
+          - "============================================"
+      loop: "{{ vsmart_devices }}"
+      loop_control:
+        index_var: idx
+      when: vsmart_devices | length > 0
+
+    - name: Save vSmart controller information to file
+      copy:
+        content: "{{ vsmart_devices | to_nice_json }}"
+        dest: "/tmp/vsmart_controllers.json"
+      when: vsmart_devices | length > 0
+
+    - name: Create simplified vSmart inventory
+      copy:
+        content: |
+          # vSmart Controllers Inventory
+          # Generated on {{ ansible_date_time.iso8601 | default('') }}
+          
+          {% for device in vsmart_devices %}
+          vSmart {{ loop.index }}:
+            Hostname: {{ device['host-name'] | default('N/A') }}
+            System IP: {{ device['system-ip'] | default('N/A') }}
+            UUID: {{ device.uuid | default('N/A') }}
+            Site ID: {{ device['site-id'] | default('N/A') }}
+            Status: {{ device.status | default('N/A') }}
+            Template: {{ device.template | default('Not Attached') }}
+          
+          {% endfor %}
+        dest: "/tmp/vsmart_inventory.txt"
+      when: vsmart_devices | length > 0
+
+    - name: Summary
+      debug:
+        msg:
+          - "Summary:"
+          - "Total vSmart controllers found: {{ vsmart_devices | length }}"
+          - "Detailed information saved to: /tmp/vsmart_controllers.json"
+          - "Simplified inventory saved to: /tmp/vsmart_inventory.txt"
+
+    - name: Warning if no vSmart controllers found
+      debug:
+        msg: "WARNING: No vSmart controllers found in the SD-WAN fabric"
+      when: vsmart_devices | length == 0

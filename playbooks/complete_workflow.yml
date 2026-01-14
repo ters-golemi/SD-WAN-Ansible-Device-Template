@@ -1,0 +1,48 @@
+---
+# Complete Workflow: Manage vSmart Controller with Device Template
+# This playbook runs all exercises in sequence
+
+- name: Complete SD-WAN Device Template Management Workflow
+  hosts: sdwan_manager
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    - name: "Exercise 1: Check for Compatible Device Templates"
+      include_tasks: 1_check_device_templates.yml
+
+    - name: Pause between exercises
+      pause:
+        seconds: 3
+        prompt: "Exercise 1 completed. Proceeding to Exercise 2..."
+
+    - name: "Exercise 2: List vSmart Controllers"
+      include_tasks: 2_list_vsmart_controllers.yml
+
+    - name: Pause before template attachment
+      pause:
+        seconds: 5
+        prompt: "Exercise 2 completed. Proceeding to Exercise 3 (Template Attachment)..."
+
+    - name: "Exercise 3: Attach vSmart Controller with Device Template"
+      include_tasks: 3_attach_template.yml
+
+    - name: Wait for configuration deployment
+      pause:
+        seconds: 30
+        prompt: "Exercise 3 completed. Waiting for configuration deployment before verification..."
+
+    - name: "Exercise 4: Verify vSmart Controller Attachment and Sync Status"
+      include_tasks: 4_verify_attachment.yml
+
+    - name: Workflow complete
+      debug:
+        msg:
+          - "=========================================="
+          - "COMPLETE WORKFLOW FINISHED"
+          - "=========================================="
+          - "All exercises completed successfully!"
+          - "Review the output above for detailed results."
+          - "=========================================="

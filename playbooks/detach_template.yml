@@ -1,0 +1,106 @@
+---
+# Playbook: Detach vSmart Controller from Device Template
+# This playbook detaches a device from its current template configuration
+# WARNING: This will remove vManage-managed configuration from the device
+
+- name: Detach vSmart Controller from Device Template
+  hosts: sdwan_manager
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - ../vars/device_vars.yml
+
+  tasks:
+    - name: Warning prompt
+      pause:
+        prompt: |
+          WARNING: This will detach the device from its template.
+          This may disrupt service and remove vManage-managed configuration.
+          Press CTRL+C to abort, or press Enter to continue...
+
+    - name: Get current device information
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/device"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: devices_response
+      no_log: false
+
+    - name: Find the target device
+      set_fact:
+        target_device: "{{ devices_response.json.data | selectattr('uuid', 'equalto', device_uuid) | list | first }}"
+      when: devices_response.json.data | selectattr('uuid', 'equalto', device_uuid) | list | length > 0
+
+    - name: Fail if device not found
+      fail:
+        msg: "Device with UUID '{{ device_uuid }}' not found"
+      when: target_device is not defined
+
+    - name: Check if device has a template
+      fail:
+        msg: "Device is not attached to any template"
+      when: target_device.template is not defined or target_device.template == ''
+
+    - name: Display current device status
+      debug:
+        msg:
+          - "Device: {{ target_device['host-name'] }}"
+          - "Current Template: {{ target_device.template }}"
+          - "UUID: {{ target_device.uuid }}"
+
+    - name: Prepare detach payload
+      set_fact:
+        detach_payload:
+          deviceType: "{{ target_device['device-type'] }}"
+          devices:
+            - deviceId: "{{ target_device.uuid }}"
+              deviceIP: "{{ target_device['system-ip'] }}"
+
+    - name: Detach device from template
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/template/config/device/mode/cli"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body: "{{ detach_payload | to_json }}"
+        body_format: json
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+        status_code: 200
+      register: detach_response
+      no_log: false
+
+    - name: Display detachment response
+      debug:
+        msg: "{{ detach_response.json }}"
+
+    - name: Extract action ID
+      set_fact:
+        action_id: "{{ detach_response.json.id }}"
+      when: detach_response.json.id is defined
+
+    - name: Display action ID
+      debug:
+        msg:
+          - "Detachment initiated"
+          - "Action ID: {{ action_id | default('N/A') }}"
+
+    - name: Summary
+      debug:
+        msg:
+          - "=========================================="
+          - "Device detached from template"
+          - "Device will now be in CLI mode"
+          - "Action ID: {{ action_id | default('N/A') }}"
+          - "=========================================="
