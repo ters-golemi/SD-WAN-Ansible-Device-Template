@@ -28,12 +28,12 @@
 
     - name: Find the target vSmart device
       set_fact:
-        device_list: "{{ devices_response.json.data | selectattr('uuid', 'equalto', device_uuid) | list }}"
+        matching_devices: "{{ devices_response.json.data | selectattr('uuid', 'equalto', device_uuid) | list }}"
 
     - name: Set target device
       set_fact:
-        target_device: "{{ device_list | first }}"
-      when: device_list | length > 0
+        target_device: "{{ matching_devices | first }}"
+      when: matching_devices | length > 0
 
     - name: Fail if device not found
       fail:

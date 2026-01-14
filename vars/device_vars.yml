@@ -19,7 +19,7 @@ device_vars:
   system_host_name: "vsmart-1"
   system_system_ip: "1.1.1.1"
   system_site_id: "100"
-  
+
   # Optional: Add other template variables as required by your template
   # Examples:
   # system_latitude: "37.7749"
@@ -27,6 +27,6 @@ device_vars:
   # system_device_groups: "vsmart-group"
   # vpn0_gateway: "10.0.0.1"
   # vpn0_ip_address: "10.0.1.10/24"
-  
+
 # Note: The exact variables required depend on your device template configuration
 # Use the SD-WAN Manager GUI to identify required variables for your template
