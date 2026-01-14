@@ -50,9 +50,11 @@ Learn how to automate SD-WAN device template management using Ansible. This lab 
 ```
 .
 ├── LAB_GUIDE.md                      # Comprehensive lab guide with detailed instructions
+├── QUICK_REFERENCE.md                # Command reference and troubleshooting guide
 ├── README.md                          # This file
 ├── inventory/
-│   └── hosts.yml                      # Ansible inventory with SD-WAN Manager details
+│   ├── hosts.yml                      # Ansible inventory with SD-WAN Manager details
+│   └── vault.yml.example              # Example encrypted credentials file
 ├── vars/
 │   └── device_vars.yml                # Device-specific variables for template attachment
 └── playbooks/
@@ -74,7 +76,10 @@ Learn how to automate SD-WAN device template management using Ansible. This lab 
 
 ## Documentation
 
-See [LAB_GUIDE.md](LAB_GUIDE.md) for:
+- [LAB_GUIDE.md](LAB_GUIDE.md) - Complete lab guide with detailed step-by-step instructions
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command reference and troubleshooting guide
+
+The lab guide includes:
 - Detailed step-by-step instructions
 - Environment setup
 - Exercise walkthroughs
