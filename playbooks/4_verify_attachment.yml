@@ -1,0 +1,207 @@
+---
+# Playbook 4: Verify vSmart Controller Attachment and Sync Status
+# This playbook verifies that the vSmart controller is attached to the template and in sync
+
+- name: Verify vSmart Controller Attachment and Sync Status
+  hosts: sdwan_manager
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - ../vars/device_vars.yml
+
+  tasks:
+    - name: Get current device information
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/device"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: devices_response
+      no_log: false
+
+    - name: Find the target vSmart device
+      set_fact:
+        matching_devices: "{{ devices_response.json.data | selectattr('uuid', 'equalto', device_uuid) | list }}"
+
+    - name: Set target device
+      set_fact:
+        target_device: "{{ matching_devices | first }}"
+      when: matching_devices | length > 0
+
+    - name: Fail if device not found
+      fail:
+        msg: "Device with UUID '{{ device_uuid }}' not found"
+      when: target_device is not defined
+
+    - name: Display device attachment status
+      debug:
+        msg:
+          - "============================================"
+          - "vSmart Controller Status:"
+          - "  Hostname: {{ target_device['host-name'] }}"
+          - "  System IP: {{ target_device['system-ip'] }}"
+          - "  UUID: {{ target_device.uuid }}"
+          - "  Device Type: {{ target_device['device-type'] }}"
+          - "  Site ID: {{ target_device['site-id'] }}"
+          - "  Reachability: {{ target_device.reachability }}"
+          - "  Status: {{ target_device.status }}"
+          - "  Template: {{ target_device.template | default('Not Attached') }}"
+          - "  Config Operation Mode: {{ target_device['configOperationMode'] | default('N/A') }}"
+          - "  Config Status: {{ target_device['config-status-message'] | default('N/A') }}"
+          - "============================================"
+
+    - name: Check if device is attached to a template
+      set_fact:
+        is_attached: "{{ target_device.template is defined and target_device.template != '' }}"
+
+    - name: Display attachment status
+      debug:
+        msg: "Device is {{ 'ATTACHED' if is_attached else 'NOT ATTACHED' }} to a template"
+
+    - name: Verify template attachment
+      assert:
+        that:
+          - is_attached
+        success_msg: "SUCCESS: Device is attached to template '{{ target_device.template }}'"
+        fail_msg: "FAILED: Device is not attached to any template"
+
+    - name: Check configuration sync status
+      set_fact:
+        is_in_sync: "{{ target_device['configOperationMode'] | default('') == 'vmanage' }}"
+
+    - name: Display sync status
+      debug:
+        msg: "Device configuration is {{ 'IN SYNC' if is_in_sync else 'NOT IN SYNC' }} with vManage"
+
+    - name: Verify configuration sync
+      assert:
+        that:
+          - is_in_sync
+        success_msg: "SUCCESS: Device configuration is in sync with vManage"
+        fail_msg: "WARNING: Device configuration may not be in sync (configOperationMode: {{ target_device['configOperationMode'] | default('N/A') }})"
+      ignore_errors: yes
+
+    - name: Get template configuration status
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/template/device/config/attached/{{ device_uuid }}"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: config_status
+      when: is_attached
+      ignore_errors: yes
+
+    - name: Display template configuration details
+      debug:
+        msg: "{{ config_status.json }}"
+        verbosity: 1
+      when: is_attached and config_status is succeeded
+
+    - name: Check device health
+      set_fact:
+        is_healthy: "{{ target_device.status | default('') in ['normal', 'reachable'] and target_device.reachability | default('') == 'reachable' }}"
+
+    - name: Display health status
+      debug:
+        msg: "Device health status: {{ 'HEALTHY' if is_healthy else 'UNHEALTHY' }}"
+
+    - name: Get device running configuration
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/template/config/running/{{ device_uuid }}"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: running_config
+      when: is_attached
+      ignore_errors: yes
+
+    - name: Save running configuration to file
+      copy:
+        content: "{{ running_config.json | to_nice_json }}"
+        dest: "/tmp/vsmart_running_config.json"
+      when: is_attached and running_config is succeeded
+
+    - name: Generate verification report
+      copy:
+        content: |
+          vSmart Controller Template Attachment Verification Report
+          =========================================================
+          Generated: {{ lookup('pipe', 'date -Iseconds') }}
+          
+          Device Information:
+          -------------------
+          Hostname: {{ target_device['host-name'] }}
+          System IP: {{ target_device['system-ip'] }}
+          UUID: {{ target_device.uuid }}
+          Device Type: {{ target_device['device-type'] }}
+          Site ID: {{ target_device['site-id'] }}
+          
+          Template Attachment Status:
+          ---------------------------
+          Attached: {{ 'YES' if is_attached else 'NO' }}
+          Template Name: {{ target_device.template | default('N/A') }}
+          Config Operation Mode: {{ target_device['configOperationMode'] | default('N/A') }}
+          
+          Sync Status:
+          ------------
+          In Sync: {{ 'YES' if is_in_sync else 'NO' }}
+          Config Status: {{ target_device['config-status-message'] | default('N/A') }}
+          
+          Health Status:
+          --------------
+          Device Status: {{ target_device.status }}
+          Reachability: {{ target_device.reachability }}
+          Health: {{ 'HEALTHY' if is_healthy else 'UNHEALTHY' }}
+          
+          Verification Result:
+          --------------------
+          {% if is_attached and is_in_sync and is_healthy %}
+          PASSED: Device is properly attached to template and in sync
+          {% else %}
+          FAILED: One or more verification checks failed
+          - Template Attached: {{ 'PASS' if is_attached else 'FAIL' }}
+          - Configuration Sync: {{ 'PASS' if is_in_sync else 'FAIL' }}
+          - Device Health: {{ 'PASS' if is_healthy else 'FAIL' }}
+          {% endif %}
+        dest: "/tmp/vsmart_verification_report.txt"
+
+    - name: Final Summary
+      debug:
+        msg:
+          - "=========================================="
+          - "VERIFICATION SUMMARY"
+          - "=========================================="
+          - "Device: {{ target_device['host-name'] }} ({{ target_device['system-ip'] }})"
+          - "Template Attached: {{ 'YES' if is_attached else 'NO' }}"
+          - "Template Name: {{ target_device.template | default('N/A') }}"
+          - "Configuration in Sync: {{ 'YES' if is_in_sync else 'NO' }}"
+          - "Device Health: {{ 'HEALTHY' if is_healthy else 'UNHEALTHY' }}"
+          - "Overall Status: {{ 'PASSED' if (is_attached and is_in_sync and is_healthy) else 'FAILED' }}"
+          - "=========================================="
+          - "Detailed report saved to: /tmp/vsmart_verification_report.txt"
+
+    - name: Final verification check
+      assert:
+        that:
+          - is_attached
+          - is_in_sync
+          - is_healthy
+        success_msg: "ALL CHECKS PASSED: vSmart controller is properly attached and in sync with the device template"
+        fail_msg: "VERIFICATION FAILED: Please review the summary above and check SD-WAN Manager for details"

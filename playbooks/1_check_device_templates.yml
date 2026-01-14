@@ -1,0 +1,64 @@
+---
+# Playbook 1: Check for Compatible Device Templates for vSmart Controller
+# This playbook retrieves all device templates and filters for vSmart-compatible templates
+
+- name: Check for Compatible Device Templates for vSmart Controller
+  hosts: sdwan_manager
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    - name: Get all device templates from SD-WAN Manager
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/template/device"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: device_templates
+      no_log: false
+
+    - name: Display all device templates
+      debug:
+        msg: "Found {{ device_templates.json.data | length }} device templates"
+
+    - name: Filter vSmart compatible templates
+      set_fact:
+        vsmart_templates: "{{ device_templates.json.data | selectattr('deviceType', 'equalto', 'vsmart') | list }}"
+
+    - name: Display vSmart compatible templates
+      debug:
+        msg: 
+          - "Found {{ vsmart_templates | length }} vSmart-compatible templates:"
+          - "{{ vsmart_templates | map(attribute='templateName') | list }}"
+
+    - name: Show detailed information for each vSmart template
+      debug:
+        msg:
+          - "Template Name: {{ item.templateName }}"
+          - "Template ID: {{ item.templateId }}"
+          - "Device Type: {{ item.deviceType }}"
+          - "Config Type: {{ item.configType }}"
+          - "Devices Attached: {{ item.devicesAttached }}"
+      loop: "{{ vsmart_templates }}"
+      when: vsmart_templates | length > 0
+
+    - name: Save vSmart template information to file
+      copy:
+        content: "{{ vsmart_templates | to_nice_json }}"
+        dest: "/tmp/vsmart_templates.json"
+      when: vsmart_templates | length > 0
+
+    - name: Summary
+      debug:
+        msg:
+          - "Summary:"
+          - "Total device templates: {{ device_templates.json.data | length }}"
+          - "vSmart-compatible templates: {{ vsmart_templates | length }}"
+          - "Template details saved to: /tmp/vsmart_templates.json"

@@ -1,0 +1,19 @@
+# Example Vault File for Secure Credential Storage
+# 
+# To create an encrypted vault file:
+# ansible-vault create inventory/vault.yml
+#
+# Then add these variables:
+
+vmanage_username: admin
+vmanage_password: your_secure_password_here
+
+# To use the vault in playbooks:
+# ansible-playbook -i inventory/hosts.yml playbooks/1_check_device_templates.yml --ask-vault-pass
+#
+# Or create a vault password file:
+# echo "your_vault_password" > .vault_pass
+# chmod 600 .vault_pass
+#
+# Then use:
+# ansible-playbook -i inventory/hosts.yml playbooks/1_check_device_templates.yml --vault-password-file .vault_pass

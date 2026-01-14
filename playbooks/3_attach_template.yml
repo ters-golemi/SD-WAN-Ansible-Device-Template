@@ -1,0 +1,184 @@
+---
+# Playbook 3: Attach vSmart Controller with Device Template
+# This playbook attaches a vSmart controller to a device template with specific variable values
+
+- name: Attach vSmart Controller with Device Template
+  hosts: sdwan_manager
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - ../vars/device_vars.yml
+
+  tasks:
+    - name: Validate required variables
+      assert:
+        that:
+          - template_name is defined
+          - device_uuid is defined
+          - device_vars is defined
+        fail_msg: "Missing required variables. Please update vars/device_vars.yml"
+
+    - name: Get device template information
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/template/device"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: templates_response
+      no_log: false
+
+    - name: Find the specified template
+      set_fact:
+        template_list: "{{ templates_response.json.data | selectattr('templateName', 'equalto', template_name) | list }}"
+
+    - name: Set target template
+      set_fact:
+        target_template: "{{ template_list | first }}"
+      when: template_list | length > 0
+
+    - name: Fail if template not found
+      fail:
+        msg: "Template '{{ template_name }}' not found. Available templates: {{ templates_response.json.data | map(attribute='templateName') | list }}"
+      when: target_template is not defined
+
+    - name: Display template information
+      debug:
+        msg:
+          - "Template Name: {{ target_template.templateName }}"
+          - "Template ID: {{ target_template.templateId }}"
+          - "Device Type: {{ target_template.deviceType }}"
+
+    - name: Get current device information
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/device"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: devices_response
+      no_log: false
+
+    - name: Find the target device
+      set_fact:
+        matching_devices: "{{ devices_response.json.data | selectattr('uuid', 'equalto', device_uuid) | list }}"
+
+    - name: Set target device
+      set_fact:
+        target_device: "{{ matching_devices | first }}"
+      when: matching_devices | length > 0
+
+    - name: Fail if device not found
+      fail:
+        msg: "Device with UUID '{{ device_uuid }}' not found"
+      when: target_device is not defined
+
+    - name: Display device information
+      debug:
+        msg:
+          - "Device Hostname: {{ target_device['host-name'] }}"
+          - "Device UUID: {{ target_device.uuid }}"
+          - "Device System IP: {{ target_device['system-ip'] }}"
+          - "Current Template: {{ target_device.template | default('None') }}"
+
+    - name: Prepare template attachment payload
+      set_fact:
+        attachment_payload:
+          deviceTemplateList:
+            - templateId: "{{ target_template.templateId }}"
+              device:
+                - csv-status: "complete"
+                  csv-deviceId: "{{ target_device.uuid }}"
+                  csv-deviceIP: "{{ target_device['system-ip'] }}"
+                  csv-host-name: "{{ target_device['host-name'] }}"
+                  "//system/host-name": "{{ device_vars.system_host_name }}"
+                  "//system/system-ip": "{{ device_vars.system_system_ip }}"
+                  "//system/site-id": "{{ device_vars.system_site_id }}"
+
+    - name: Display attachment payload
+      debug:
+        msg: "{{ attachment_payload }}"
+        verbosity: 1
+
+    - name: Attach device to template
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/template/device/config/attachfeature"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body: "{{ attachment_payload | to_json }}"
+        body_format: json
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+        status_code: 200
+      register: attach_response
+      no_log: false
+
+    - name: Display attachment response
+      debug:
+        msg:
+          - "Attachment initiated successfully"
+          - "Response: {{ attach_response.json }}"
+
+    - name: Extract action ID
+      set_fact:
+        action_id: "{{ attach_response.json.id }}"
+      when: attach_response.json.id is defined
+
+    - name: Display action ID for monitoring
+      debug:
+        msg:
+          - "Template attachment initiated"
+          - "Action ID: {{ action_id | default('N/A') }}"
+          - "Use this ID to monitor the deployment progress"
+
+    - name: Wait for initial processing
+      pause:
+        seconds: 5
+        prompt: "Waiting for initial processing..."
+
+    - name: Check action status
+      uri:
+        url: "https://{{ vmanage_host }}:{{ vmanage_port }}/dataservice/device/action/status/{{ action_id }}"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        user: "{{ vmanage_username }}"
+        password: "{{ vmanage_password }}"
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs | default(false) }}"
+        return_content: yes
+      register: action_status
+      when: action_id is defined
+      ignore_errors: yes
+
+    - name: Display initial action status
+      debug:
+        msg: "{{ action_status.json }}"
+      when: action_id is defined and action_status is succeeded
+
+    - name: Summary
+      debug:
+        msg:
+          - "=========================================="
+          - "Template Attachment Summary:"
+          - "Device: {{ target_device['host-name'] }} ({{ target_device['system-ip'] }})"
+          - "Template: {{ target_template.templateName }}"
+          - "Action ID: {{ action_id | default('N/A') }}"
+          - "Status: Initiated"
+          - "=========================================="
+          - "Note: Configuration push may take several minutes"
+          - "Run playbook 4 to verify attachment status"
