@@ -32,6 +32,3 @@ Thumbs.db
 # Output files
 *.json
 !playbooks/*.json
-*.txt
-!LAB_GUIDE.md
-!README.md
