@@ -65,7 +65,7 @@
       copy:
         content: |
           # vSmart Controllers Inventory
-          # Generated on {{ ansible_date_time.iso8601 | default('') }}
+          # Generated on {{ lookup('pipe', 'date -Iseconds') }}
           
           {% for device in vsmart_devices %}
           vSmart {{ loop.index }}:

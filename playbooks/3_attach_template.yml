@@ -36,8 +36,12 @@
 
     - name: Find the specified template
       set_fact:
-        target_template: "{{ templates_response.json.data | selectattr('templateName', 'equalto', template_name) | list | first }}"
-      when: templates_response.json.data | selectattr('templateName', 'equalto', template_name) | list | length > 0
+        template_list: "{{ templates_response.json.data | selectattr('templateName', 'equalto', template_name) | list }}"
+
+    - name: Set target template
+      set_fact:
+        target_template: "{{ template_list | first }}"
+      when: template_list | length > 0
 
     - name: Fail if template not found
       fail:

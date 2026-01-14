@@ -1,43 +1,53 @@
 ---
 # Complete Workflow: Manage vSmart Controller with Device Template
 # This playbook runs all exercises in sequence
+# NOTE: Run this from the repository root with:
+# ansible-playbook -i inventory/hosts.yml playbooks/complete_workflow.yml
 
-- name: Complete SD-WAN Device Template Management Workflow
-  hosts: sdwan_manager
-  connection: local
+- name: "Exercise 1: Check for Compatible Device Templates"
+  import_playbook: 1_check_device_templates.yml
+
+- name: Pause between exercises 1 and 2
+  hosts: localhost
   gather_facts: no
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
-
   tasks:
-    - name: "Exercise 1: Check for Compatible Device Templates"
-      include_tasks: 1_check_device_templates.yml
-
-    - name: Pause between exercises
+    - name: Pause
       pause:
         seconds: 3
         prompt: "Exercise 1 completed. Proceeding to Exercise 2..."
 
-    - name: "Exercise 2: List vSmart Controllers"
-      include_tasks: 2_list_vsmart_controllers.yml
+- name: "Exercise 2: List vSmart Controllers"
+  import_playbook: 2_list_vsmart_controllers.yml
 
-    - name: Pause before template attachment
+- name: Pause between exercises 2 and 3
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Pause
       pause:
         seconds: 5
         prompt: "Exercise 2 completed. Proceeding to Exercise 3 (Template Attachment)..."
 
-    - name: "Exercise 3: Attach vSmart Controller with Device Template"
-      include_tasks: 3_attach_template.yml
+- name: "Exercise 3: Attach vSmart Controller with Device Template"
+  import_playbook: 3_attach_template.yml
 
-    - name: Wait for configuration deployment
+- name: Wait for configuration deployment
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Pause
       pause:
         seconds: 30
         prompt: "Exercise 3 completed. Waiting for configuration deployment before verification..."
 
-    - name: "Exercise 4: Verify vSmart Controller Attachment and Sync Status"
-      include_tasks: 4_verify_attachment.yml
+- name: "Exercise 4: Verify vSmart Controller Attachment and Sync Status"
+  import_playbook: 4_verify_attachment.yml
 
-    - name: Workflow complete
+- name: Workflow complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Final message
       debug:
         msg:
           - "=========================================="
